@@ -1,0 +1,62 @@
+// Use DBML to define your database structure
+// Docs: https://dbml.dbdiagram.io/docs
+
+Table users {
+  id integer [primary key, not null]
+  name varchar [not null]
+  username varchar [unique, not null]
+  email varchar [unique, not null]
+  password varchar [not null]
+  avatar_url varchar
+
+  created_at timestamp [not null]
+  updated_at timestamp [not null]
+}
+
+Table points {
+  id integer [primary key, not null]
+  user_id integer [not null]
+  name varchar [not null]
+  address varchar [not null]
+  city varchar [not null]
+  state varchar [not null]
+  verified boolean [not null]
+
+  created_at timestamp [not null]
+  updated_at timestamp [not null]
+}
+
+Table point_images {
+  id integer [primary key, not null]
+  url varchar(255) [not null]
+  point_id integer [not null]
+
+  created_at timestamp [not null]
+  updated_at timestamp [not null]
+}
+
+Table point_ratings {
+  id integer [primary key, not null]
+  rating float [not null]
+  comment varchar(255) [not null]
+  user_id integer [not null]
+  point_id integer [not null]
+
+  created_at timestamp [not null]
+  updated_at timestamp [not null]
+}
+
+Table sessions {
+  id integer [primary key, not null]
+  token varchar(255) [unique, not null]
+  user_id integer [not null]
+
+  created_at timestamp [not null]
+  updated_at timestamp [not null]
+}
+
+Ref: points.user_id > users.id
+Ref: point_ratings.point_id > points.id
+Ref: point_ratings.user_id > users.id
+Ref: point_images.point_id > points.id
+Ref: sessions.user_id > users.id
