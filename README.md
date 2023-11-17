@@ -277,3 +277,655 @@ async function create({ request, locals }) {
 Ao final do desenvolvimento, foram realizadas as implantações em ambiente de produção de cada peça do sistema, para validar o funcionamento do conjunto completo da aplicação. Como comentado anteriormente, o serviço foi implantado na Vercel, que atribuiu um domínio público para que qualquer usuário pudesse acessar a aplicação.
 
 A url da aplicação é https://aps-8-sem.vercel.app, e a aplicação pode ser acessada através de qualquer navegador, em qualquer dispositivo, como computadores, tablets e smartphones, satisfazendo assim o objetivo inicial de desenvolvimento de uma aplicação acessível de clientes mobile.
+
+## Relatório com as linhas de código
+
+```svelte
+<!-- arquivo: src/routes/+page.svelte -->
+<script lang="ts">
+  import Input from '@/components/forms/Input.svelte'
+  import type { ActionData } from './$types'
+  import { enhance } from '$app/forms'
+  import { fade } from 'svelte/transition'
+
+  export let form: ActionData
+
+  $: error = typeof form?.error === 'string' ? form.error : undefined
+</script>
+
+<svelte:head>
+  <title>Collect-it | Login</title>
+</svelte:head>
+
+<div class="w-full h-screen grid place-items-center">
+  <div class="flex flex-col items-center">
+    <h1 class="mb-2 text-4xl font-bold tracking-tighter text-green-600">
+      Collect-it
+    </h1>
+    <p class="mb-4 text-center leading-tight">
+      Compartilhe pontos de coleta
+      <br />
+      de lixo recicláveis
+    </p>
+    <form method="POST" action="?/login" class="mb-4 grid gap-4" use:enhance>
+      <Input
+        name="username"
+        label="Usuário"
+        type="text"
+        placeholder="Digite seu nome de usuário"
+      />
+      <Input
+        type="password"
+        name="password"
+        label="Senha"
+        placeholder="Digite sua senha"
+      />
+      <button class="py-2 px-4 bg-green-600 text-white rounded">
+        Entrar
+      </button>
+      {#if error}
+        <span in:fade class="text-sm text-red-600 text-center">{error}</span>
+      {/if}
+    </form>
+    <p>
+      Não tem uma conta?
+      <a class="underline text-green-600" href="/cadastro">Cadastre-se</a>
+    </p>
+  </div>
+</div>
+```
+
+```typescript
+// arquivo: src/router/+page.server.ts
+import { object, string } from 'zod'
+import type { Actions } from './$types'
+import { db } from '@/db/client'
+import { fail, redirect } from '@sveltejs/kit'
+import bcrypt from 'bcryptjs'
+import crypto from 'node:crypto'
+import type { User } from '@prisma/client'
+
+const login = object({
+  username: string().max(16),
+  password: string().max(255),
+})
+
+function generateSessionToken(user: User) {
+  return crypto
+    .createHash('sha256')
+    .update(
+      JSON.stringify({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        date: new Date(),
+      }),
+    )
+    .digest('hex')
+}
+
+export const actions: Actions = {
+  async login({ request, cookies }) {
+    const body = Object.fromEntries(await request.formData())
+
+    const result = login.safeParse(body)
+
+    if (!result.success) {
+      return fail(400, {
+        error: result.error.flatten().fieldErrors,
+      })
+    }
+
+    const data = result.data
+
+    const user = await db.user.findUnique({
+      where: {
+        username: data.username,
+      },
+    })
+
+    if (!user) {
+      return fail(400, {
+        error: 'Usuário não encontrado',
+      })
+    }
+
+    const isPasswordValid = await bcrypt.compare(data.password, user.password)
+
+    if (!isPasswordValid) {
+      return fail(400, {
+        error: 'Senha incorreta',
+      })
+    }
+
+    const token = generateSessionToken(user)
+
+    await db.session.create({
+      data: {
+        token,
+        userId: user.id,
+      },
+    })
+
+    cookies.set('token', token, {
+      path: '/',
+      httpOnly: true,
+    })
+
+    throw redirect(302, '/app')
+  },
+}
+```
+
+```svelte
+<!-- arquivo: src/routes/cadastro/+page.svelte -->
+<script lang="ts">
+  import { enhance } from '$app/forms'
+  import ImageInput from '@/components/forms/ImageInput.svelte'
+  import Input from '@/components/forms/Input.svelte'
+  import type { ActionData } from './$types'
+
+  export let form: ActionData
+
+  $: fieldErrors = typeof form?.error === 'object' ? form.error : undefined
+  $: actionError = typeof form?.error === 'string' ? form.error : undefined
+</script>
+
+<svelte:head>
+  <title>Collect-it | Cadastro</title>
+</svelte:head>
+
+<div class="w-full h-screen grid place-items-center">
+  <div class="flex flex-col items-center">
+    <h1 class="mb-2 text-4xl font-bold tracking-tighter text-green-600">
+      Cadastro
+    </h1>
+    <p class="leading-tight text-center mb-4">
+      Preencha o formulário<br />para se cadastrar
+    </p>
+    <form
+      method="POST"
+      enctype="multipart/form-data"
+      action="?/register"
+      class="mb-4 grid gap-4"
+      use:enhance
+    >
+      <Input
+        name="name"
+        label="Nome"
+        type="text"
+        placeholder="Digite seu nome completo"
+        error={fieldErrors?.name?.join(' | ')}
+      />
+      <Input
+        name="username"
+        label="Usuário"
+        type="text"
+        placeholder="Digite seu nome de usuário"
+        error={fieldErrors?.username?.join(' | ')}
+      />
+      <Input
+        name="email"
+        label="E-mail"
+        type="email"
+        placeholder="Digite seu e-mail"
+        error={fieldErrors?.email?.join(' | ')}
+      />
+      <Input
+        type="password"
+        name="password"
+        label="Senha"
+        placeholder="Digite sua senha"
+        error={fieldErrors?.password?.join(' | ')}
+      />
+      <ImageInput label="Foto de perfil" name="avatar" />
+      <button class="py-2 px-4 rounded bg-green-600 text-white">
+        Cadastrar
+      </button>
+      {#if actionError}
+        <span class="text-sm text-red-600 text-center">{actionError}</span>
+      {/if}
+    </form>
+    <p>
+      Já tem uma conta?
+      <a class="underline text-green-600" href="/">Faça login</a>
+    </p>
+  </div>
+</div>
+```
+
+```typescript
+// arquivo: src/routes/cadastro/+page.server.ts
+import { redirect, fail } from '@sveltejs/kit'
+import { object, string, instanceof as instanceOf } from 'zod'
+import type { Actions } from './$types'
+import bcrypt from 'bcryptjs'
+
+import { db } from '@/db/client'
+import { avatar } from '@/avatar/client'
+import { storage } from '@/storage/client'
+
+const register = object({
+  name: string()
+    .min(2, { message: 'Nome precisa ter pelo menos 2 caracteres ' })
+    .max(255, {
+      message: 'Nome pode ter no máximo 255 caracteres',
+    }),
+  username: string()
+    .min(4, { message: 'Usuário precisa ter pelo menos 4 caracteres' })
+    .max(16, { message: 'Usuário pode ter no máximo 16 caracteres' })
+    .regex(/^[a-z0-9_]+$/i, {
+      message: 'Usuário só pode conter letras, números e _',
+    }),
+  email: string().email({ message: 'E-mail precisa ser válido' }).max(255),
+  password: string()
+    .min(8, { message: 'Senha precisa ter pelo menos 8 caracteres ' })
+    .max(255, {
+      message: 'Senha pode ter no máximo 255 caracteres',
+    }),
+  avatar: instanceOf(File).optional(),
+})
+
+export const actions: Actions = {
+  async register({ request }) {
+    const body = Object.fromEntries(await request.formData())
+
+    const result = register.safeParse(body)
+
+    if (!result.success) {
+      return fail(400, {
+        error: result.error.flatten().fieldErrors,
+      })
+    }
+
+    try {
+      const data = result.data
+
+      data.password = await bcrypt.hash(data.password, await bcrypt.genSalt())
+
+      const user = await db.user.create({
+        data: {
+          email: data.email,
+          name: data.name,
+          username: data.username,
+          password: data.password,
+          avatarUrl: avatar.getAvatar(data.username),
+        },
+      })
+
+      if (data.avatar) {
+        const fileInfo = await storage.save(
+          'avatars',
+          `${crypto.randomUUID()}.jpg`,
+          await data.avatar.arrayBuffer(),
+        )
+
+        await db.user.update({
+          where: {
+            id: user.id,
+          },
+          data: {
+            avatarUrl: fileInfo.url,
+          },
+        })
+      }
+    } catch (err) {
+      return fail(400, {
+        error: 'Usuário já existe',
+      })
+    }
+
+    throw redirect(302, '/')
+  },
+}
+```
+
+```svelte
+<!-- arquivo: src/routes/app/+page.svelte -->
+<script lang="ts">
+  import type { PageData } from './$types'
+
+  export let data: PageData
+</script>
+
+<svelte:head>
+  <title>Collect-it | App</title>
+</svelte:head>
+
+<h1 class="text-4xl font-bold tracking-tighter text-green-600">
+  Pontos de coleta
+</h1>
+
+<p class="mb-4">Veja os pontos de coleta próximos de você.</p>
+
+<div class="mb-4 flex gap-2 items-center">
+  <img
+    src={data.user.avatarUrl}
+    alt={data.user.username}
+    class="w-12 h-12 rounded-full object-cover"
+  />
+  <div>
+    <h2 class="leading-none text-lg font-bold tracking-tighter">
+      @{data.user.username}
+    </h2>
+    <p>{data.user.name}</p>
+  </div>
+</div>
+
+{#if data.points.length > 0}
+  <ul class="grid gap-4">
+    {#each data.points as point (point.id)}
+      <li class="p-4 border rounded">
+        <img
+          src={point.images[0].url}
+          alt={point.name}
+          class="mb-4 h-48 w-full object-cover rounded"
+        />
+        <div class="mb-2 flex gap-1 items-center">
+          <a
+            href={`/app/pontos/${point.id}`}
+            class="text-2xl font-bold tracking-tighter">{point.name}</a
+          >
+          {#if !point.verified}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              class="w-6 h-6 text-blue-600"
+            >
+              <path
+                fill-rule="evenodd"
+                d="M8.603 3.799A4.49 4.49 0 0112 2.25c1.357 0 2.573.6 3.397 1.549a4.49 4.49 0 013.498 1.307 4.491 4.491 0 011.307 3.497A4.49 4.49 0 0121.75 12a4.49 4.49 0 01-1.549 3.397 4.491 4.491 0 01-1.307 3.497 4.491 4.491 0 01-3.497 1.307A4.49 4.49 0 0112 21.75a4.49 4.49 0 01-3.397-1.549 4.49 4.49 0 01-3.498-1.306 4.491 4.491 0 01-1.307-3.498A4.49 4.49 0 012.25 12c0-1.357.6-2.573 1.549-3.397a4.49 4.49 0 011.307-3.497 4.49 4.49 0 013.497-1.307zm7.007 6.387a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z"
+                clip-rule="evenodd"
+              />
+            </svg>
+          {/if}
+        </div>
+        <p>{point.address}.</p>
+        <p>{point.city} - {point.state}.</p>
+        <p>Criado por @{point.user.username}</p>
+      </li>
+    {/each}
+  </ul>
+{:else}
+  <div class="p-8 text-center border-2 border-dashed rounded text-gray-400">
+    <p>Nenhum ponto a ser exibido</p>
+  </div>
+{/if}
+```
+
+```typescript
+// arquivo: src/routes/app/+page.server.ts
+import { db } from '@/db/client'
+import type { PageServerLoad } from './$types'
+
+export const load: PageServerLoad = async ({ locals }) => {
+  const user = locals.user!
+  const points = await db.point.findMany({
+    orderBy: {
+      createdAt: 'desc',
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          username: true,
+          avatarUrl: true,
+        },
+      },
+      images: {
+        select: {
+          id: true,
+          url: true,
+        },
+      },
+    },
+  })
+
+  return {
+    user: {
+      id: user.id,
+      name: user.name,
+      username: user.username,
+      email: user.email,
+      avatarUrl: user.avatarUrl,
+    },
+    points,
+  }
+}
+```
+
+```svelte
+<!-- arquivo: src/routes/app/criar/+page.svelte -->
+<script lang="ts">
+  import ImageInput from '@/components/forms/ImageInput.svelte'
+  import Input from '@/components/forms/Input.svelte'
+
+  let images = 1
+
+  function addImages() {
+    if (images > 3) {
+      return
+    }
+
+    images += 1
+  }
+
+  function removeImages() {
+    if (images <= 1) {
+      return
+    }
+
+    images -= 1
+  }
+</script>
+
+<svelte:head>
+  <title>Collect-it | Criar ponto</title>
+</svelte:head>
+
+<h1 class="mb-2 text-4xl font-bold tracking-tighter text-green-600">
+  Criar ponto
+</h1>
+<p class="mb-4 leading-tight">
+  Preencha o formulário para criar um novo ponto de coleta
+</p>
+
+<form
+  method="POST"
+  enctype="multipart/form-data"
+  action="?/create"
+  class="grid gap-4"
+>
+  <Input
+    name="name"
+    type="text"
+    label="Nome"
+    placeholder="Nome do ponto de coleta"
+  />
+  <Input
+    name="address"
+    type="text"
+    label="Endereço"
+    placeholder="Endereço do ponto de coleta"
+  />
+  <Input name="city" type="text" label="Cidade" placeholder="Cidade" />
+  <Input name="state" type="text" label="Estado" placeholder="Estado" />
+  {#each Array.from({ length: images }) as _, index (index)}
+    <ImageInput label="Imagem" name="image" />
+  {/each}
+  <div class="grid grid-cols-2 gap-4 text-gray-800">
+    <button
+      type="button"
+      class="py-2 px-4 border rounded grid place-items-center disabled:bg-gray-100"
+      on:click={removeImages}
+      disabled={images <= 1}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke-width="1.5"
+        stroke="currentColor"
+        class="h-4 w-4"
+      >
+        <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12h-15" />
+      </svg>
+    </button>
+    <button
+      type="button"
+      class="py-2 px-4 border rounded grid place-items-center disabled:bg-gray-100"
+      on:click={addImages}
+      disabled={images >= 3}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke-width="1.5"
+        stroke="currentColor"
+        class="h-4 w-4"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M12 4.5v15m7.5-7.5h-15"
+        />
+      </svg>
+    </button>
+  </div>
+  <button class="py-2 px-4 bg-green-600 rounded text-white">Criar</button>
+</form>
+```
+
+```typescript
+// arquivo: src/routes/app/criar/+page.server.ts
+import {
+  object,
+  string,
+  instanceof as instanceOf,
+  array,
+  union,
+  literal,
+} from 'zod'
+import type { Actions } from './$types'
+import { fail, redirect } from '@sveltejs/kit'
+import { db } from '@/db/client'
+import { storage } from '@/storage/client'
+
+const STATES = [
+  { name: 'Acre', value: 'AC' },
+  { name: 'Alagoas', value: 'AL' },
+  { name: 'Amapá', value: 'AP' },
+  { name: 'Amazonas', value: 'AM' },
+  { name: 'Bahia', value: 'BA' },
+  { name: 'Ceará', value: 'CE' },
+  { name: 'Distrito Federal', value: 'DF' },
+  { name: 'Espírito Santo', value: 'ES' },
+  { name: 'Goiás', value: 'GO' },
+  { name: 'Maranhão', value: 'MA' },
+  { name: 'Mato Grosso', value: 'MT' },
+  { name: 'Mato Grosso do Sul', value: 'MS' },
+  { name: 'Minas Gerais', value: 'MG' },
+  { name: 'Pará', value: 'PA' },
+  { name: 'Paraíba', value: 'PB' },
+  { name: 'Paraná', value: 'PR' },
+  { name: 'Pernambuco', value: 'PE' },
+  { name: 'Piauí', value: 'PI' },
+  { name: 'Rio de Janeiro', value: 'RJ' },
+  { name: 'Rio Grande do Norte', value: 'RN' },
+  { name: 'Rio Grande do Sul', value: 'RS' },
+  { name: 'Rondônia', value: 'RO' },
+  { name: 'Roraima', value: 'RR' },
+  { name: 'Santa Catarina', value: 'SC' },
+  { name: 'São Paulo', value: 'SP' },
+  { name: 'Sergipe', value: 'SE' },
+  { name: 'Tocantins', value: 'TO' },
+] as const
+
+const create = object({
+  name: string()
+    .min(2, { message: 'Nome deve ter pelo menos 2 caracteres' })
+    .max(255, {
+      message: 'Nome deve ter no máximo 255 caracteres',
+    }),
+  address: string()
+    .min(2, {
+      message: 'Endereço deve ter pelo menos 2 caracteres',
+    })
+    .max(255, {
+      message: 'Endereço deve ter no máximo 255 caracteres',
+    }),
+  city: string()
+    .min(2, {
+      message: 'Cidade deve ter pelo menos 2 caracteres',
+    })
+    .max(255, {
+      message: 'Cidade deve ter no máximo 255 caracteres',
+    }),
+  state: string().max(32),
+})
+
+const images = array(instanceOf(File)).min(1)
+
+export const actions: Actions = {
+  async create({ request, locals }) {
+    const user = locals.user
+
+    if (!user) {
+      return fail(400, {
+        error: 'Você precisa estar logado para criar um ponto de coleta',
+      })
+    }
+
+    const form = await request.formData()
+    const formResult = create.safeParse(Object.fromEntries(form))
+
+    if (!formResult.success) {
+      return fail(400, {
+        error: formResult.error.flatten().fieldErrors,
+      })
+    }
+
+    const point = await db.point.create({
+      data: {
+        ...formResult.data,
+        userId: user.id,
+      },
+    })
+
+    const filesResult = images.safeParse(Array.from(form.getAll('image')))
+
+    if (!filesResult.success) {
+      return fail(400, {
+        error: filesResult.error.flatten().fieldErrors,
+      })
+    }
+
+    const files = filesResult.data
+
+    const paths = await Promise.all(
+      files.map(async (file) =>
+        storage.save(
+          'points',
+          `${crypto.randomUUID()}-${file.name}.jpg`,
+          await file.arrayBuffer(),
+        ),
+      ),
+    )
+
+    await Promise.all(
+      paths.map((path) =>
+        db.pointImage.create({
+          data: {
+            url: path.url,
+            pointId: point.id,
+          },
+        }),
+      ),
+    )
+
+    throw redirect(302, '/app')
+  },
+}
+```
