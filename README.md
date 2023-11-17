@@ -278,6 +278,10 @@ Ao final do desenvolvimento, foram realizadas as implantações em ambiente de p
 
 A url da aplicação é https://aps-8-sem.vercel.app, e a aplicação pode ser acessada através de qualquer navegador, em qualquer dispositivo, como computadores, tablets e smartphones, satisfazendo assim o objetivo inicial de desenvolvimento de uma aplicação acessível de clientes mobile.
 
+## Conclusão
+
+O desenvolvimento da aplicação foi realizado com sucesso, atingindo os objetivos iniciais de desenvolvimento. A aplicação foi desenvolvida com foco em dispositivos móveis, porém também pode ser acessada através de computadores, sem perda de funcionalidades. Além das funcionalidades no lado do cliente, o back-end da aplicação também foi desenvolvido com foco em ambientes distribuídos, utilizando serviços de computação em nuvem e apresentando-se de maneira uniforme e coerente para o usuário final, mesmo executando em múltiplos computadores.
+
 ## Relatório com as linhas de código
 
 ```svelte
